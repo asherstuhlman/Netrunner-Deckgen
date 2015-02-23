@@ -1,0 +1,512 @@
+<head>
+<title>Netrunner random deck generator</title>
+<script src="scripts/jquery-1.10.2.js"></script> 
+<script src="scripts/underscore-min.js"></script>  
+<script src="scripts/netrunnercards_with_synergies.js"></script>  
+<script type="text/javascript"> 
+
+var deck = {
+  contents: [],
+
+  agendapoints: function() {
+	ap_total = 0;
+	for (m=0;m<deck.contents.length;m++)
+		{
+		if (deck.contents[m].type == "Agenda")
+			{ap_total+=deck.contents[m].agendapoints;}		
+		}
+	return ap_total;  
+  },
+  
+  influence: function() {
+	inf_total = 0;
+	for (m=0;m<deck.contents.length;m++)
+		{
+		if (deck.contents[m].faction != deck.identity.faction)
+			{inf_total+=deck.contents[m].factioncost;}		
+		}
+	return inf_total;
+  }
+ }
+
+function main(pickedSide) {
+
+//what if we have "modules " - sets of cards that work well as a package
+
+deck.contents = [];
+deck.contents[0] = cards[0]; //just initializing
+deck.deckType == pickedSide; // so we can key off this later
+
+document.body.innerHTML = "Netrunner Random Deck Generator <button onclick='main(1)'>Generate a new Runner deck</button><button onclick='main(2)'>Generate a new Corp deck</button><button onclick='main(3)'>Generate a 'good' deck</button><p><table><tr><td style='width:400px' class='deck_display'></td><td style='width:400px' class='deck_stats' valign='top'></td></tr></table><p class='footer'></p>";
+//this is a bad way to do it - the buttons shouldn't reset the entire doc
+// like I'm actually awful at this
+
+//first let's get an identity
+
+if (pickedSide == 0 || pickedSide == 3)
+	{
+	deck.identity = _.sample(_.filter(cards,function(c){if (c.type == "Identity" && c.setname !="Special" && c.cyclenumber != 8){return 1;}return 0;}));
+	}
+else if (pickedSide == 1)
+	{
+	deck.identity = "";
+	deck.identity = _.sample(_.filter(cards,function(c){if (c.type == "Identity" && c.side == "Runner" && c.setname !="Special"){return 1;}return 0;}));
+	}
+else if (pickedSide == 2)
+	{
+	deck.identity = "";
+	deck.identity = _.sample(_.filter(cards,function(c){if (c.type == "Identity" && c.side == "Corp" && c.setname !="Special"){return 1;}return 0;}));
+	}
+	
+deck.maxSize = deck.identity.minimumdecksize;
+if (deck.identity.side == "Corp")
+	{deck.maxSize +=4;}
+//Now we'll grab 45 cards that match the identity's side
+
+// let's generate our deck now
+// we have different methods for runner/corp
+var i=0; // this is where we are in the deck
+
+if (deck.identity.side == "Corp") //if the deck's a corp deck, we get agendas first
+	{
+	deck.agendaMax = 20;
+	if (deck.maxSize == 44){deck.agendaMax -= 2;}
+	
+	for (i=0;i<deck.maxSize&&deck.agendapoints()<deck.agendaMax;i++) // get agendas
+		{
+		deck.contents[i] = _.sample(_.filter(cards,function(c){if (c.agendapoints + deck.agendapoints() <=deck.agendaMax+1 && check_card_legality(c) == 1 && c.type == "Agenda" && (c.faction == "Neutral" || c.faction == deck.identity.faction)){return 1;}return 0;}));		
+		
+		if (pickedSide == 3 && deck.contents[i].title == "Medical Breakthrough" && deck.agendapoints()+2 <=deck.agendaMax+1 && count(deck.contents[i]) < 3)
+			{ // try to get extra medical breakthroughs if you're playing one
+			deck.contents[i+1] = deck.contents[i];
+			i++;
+			}
+		}
+	}
+
+// If we're building a powerful deck, we're going to do some nonrandom stuff in deck construction, starting with taking seven/ten in-faction/neutral econ cards for corp/runner
+if (pickedSide == 3)
+	{
+
+	toGet = 7;
+	if (deck.identity.side == "Runner")
+		{toGet = 10;} //shitty shitty code w/e
+	
+	for (power=0;power<toGet;power++) 
+		{	
+		deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.good_econ == "TRUE" && (c.faction == deck.identity.faction || c.faction == "Neutral") && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+		i++;//Really, I should just be appending to the deck instead of doing this weird incremental thing
+		}
+//And we'll add ten cards that are either powerful or combo with our ID, again sticking to in-faction/neutral. Setting this value too high makes corp decks low on ice.
+	for (power=0;power<10;power++) 
+		{	
+		deck.contents[i]= _.sample(_.filter(cards,function(c){if ((c.generally_good_card == "TRUE" || c.combo == deck.identity.id_name_short)  && (c.faction == deck.identity.faction || c.faction == "Neutral") && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+		i++;
+		}
+	
+	if (deck.identity.side == "Runner")//Then we'll add one breaker of each type if we're a runner, skipping stealth and Sage and Faerie
+		{
+	//Fracter
+		deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.subtype.indexOf("Fracter") > -1 && c.text.indexOf("tealth") == -1 && c.name != "Sage" && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+		i++;
+
+	//Decoder
+		deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.subtype.indexOf("Decoder") > -1 && c.text.indexOf("tealth") == -1 && c.name != "Sage" && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+		i++;
+			
+	//Killer		
+		deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.subtype.indexOf("Killer") > -1 && c.text.indexOf("tealth") == -1 && c.name != "Faerie" && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+		i++;
+		}
+	
+	//if we're Stronger Together grab five bioroids
+		if (deck.identity.title == "Haas-Bioroid: Stronger Together")
+		{
+		for (power=0;power<5;power++) 
+			{	
+			deck.contents[i]= _.sample(_.filter(cards,function(c){if  (c.subtype.indexOf("Bioroid") == -1 && c.type == "ICE" && (c.faction == deck.identity.faction || c.faction == "Neutral") && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));			
+			i++;
+			}
+		}
+	
+	//NEXT Design, grab ten ice
+	if (deck.identity.title == "NEXT Design: Guarding the Net")
+		{
+		for (power=0;power<10;power++) 
+			{	
+			deck.contents[i]= _.sample(_.filter(cards,function(c){if  (c.type == "ICE" && (c.faction == deck.identity.faction || c.faction == "Neutral") && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));			
+			i++;
+			}
+		}
+	
+	//if we're the foundry we should grab ice pairs
+	if (deck.identity.title == "The Foundry: Refining the Process")
+		{
+		for (power=0;power<5;power++) 
+			{	
+			deck.contents[i]= _.sample(_.filter(cards,function(c){if  (c.type == "ICE" && (c.faction == deck.identity.faction || c.faction == "Neutral") && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));			
+			i++;
+			if (check_card_legality(deck.contents[i-1]) == 1)
+				{
+				deck.contents[i] = deck.contents[i-1];
+				i++;			
+				}
+			}
+		}
+	
+	//Because We Built It, grab advancable ice
+	//if we're Nisei Division grab three psi cards
+	
+		
+	//If we're Noise take six viruses
+	if (deck.identity.title == "Noise: Hacker Extraordinaire")
+		{
+		for (power=0;power<6;power++) 
+			{	
+			deck.contents[i]= _.sample(_.filter(cards,function(c){if  (c.subtype == "Virus" && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));			
+			i++;
+			}
+		}
+	}
+	
+//Take cards one at at time from the set of legal cards
+if (pickedSide == 3) { // For decks that are good, we have a sorta fancy algorithm
+	for (i;i<deck.maxSize;i++) 
+	{
+	//Add non-awful cards
+	deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.awful != "TRUE" && c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+	
+	// If we're building a good deck and a card's play_with contains a card name, try to add that card	
+	if (deck.contents[i].play_with != -1)
+		{
+		card_to_check = _.sample(_.filter(cards,function(c){if (c.title == deck.contents[i].play_with){return 1;}return 0;}));
+		if (check_card_legality(card_to_check) == 1)
+			{
+			deck.contents[i+1] = card_to_check;
+			i++;
+			}
+		}
+	}}
+else for (i;i<deck.maxSize;i++) //A simpler random pull for decks that aren't good decks
+	{	
+	deck.contents[i]= _.sample(_.filter(cards,function(c){if (c.type != "Agenda" && c.type != "Identity" && c.side == deck.identity.side && check_card_legality(c) == 1){return 1;}return 0;}));
+	}
+	
+//For some cards, if you take one, you should take the other if you can - Switchblade / Silencer etc
+	
+//now let's print the deck 
+printDeck(deck);
+}
+
+function randomFrom(bottom,top){ //generates a random whole number within bounds
+return Math.floor(Math.random()*(top-bottom)+(bottom));
+}
+
+function countInArray(trait,value){
+	var total = 0;
+	for (var n=0;n<cards.length;n++)
+		{
+		if (cards[n][trait]==value){total++;} //i want it to get the number of cards with any given trait
+		}
+	return total;
+}
+
+function countInArray_noID_noAgenda(trait,value){
+	var total = 0;
+	for (var n=0;n<cards.length;n++)
+		{
+		if (cards[n][trait]==value && cards[n].type != "Agenda" && cards[n].type != "Identity"){total++;}
+		}
+	return total;
+}
+
+function countInDeck(trait,value){ // ugggggh this should be the same function as CountInArray
+	var total = 0;
+	for (var n=0;n<deck.contents.length;n++)
+		{
+		if (deck.contents[n][trait]==value){total++;} 
+		}
+	return total;
+}
+
+function same_name_in_deck(card){
+	var total = 0;
+	for (var n=0;n<deck.contents.length;n++)
+		{
+		if (deck.contents[n].title==card.title){total++;} 
+		}
+	return total;
+}
+
+function startPoint(trait,value){
+	for (var n=0;n<cards.length;n++)
+		{
+		if (cards[n][trait]==value){return n;}
+		}
+	return -1;
+}
+	
+function compare_type(a,b) {
+  if (a.type < b.type)
+     return -1;
+  if (a.type > b.type)
+    return 1;
+
+// if they're the same type, sort by neutrality and then title
+  if (a.faction == "Neutral" && b.faction != "Neutral")
+	return 1;
+  if (b.faction == "Neutral" && a.faction != "Neutral")
+	return -1;
+
+  if (a.side < b.side)
+	return -1;
+  if (b.side > a.side)
+    return 1;
+	
+	
+  if (a.title < b.title)
+     return -1;
+  if (a.title > b.title)
+    return 1;	
+  return 0;
+}
+
+function compare_side_noID_noAgenda(a,b) {
+// We want to sort identities and agendas to the end. We're also sorting out unreleased cards
+  if ((a.type == "Identity" || a.type == "Agenda" || a.cyclenumber == 8) && b.type != "Identity" && b.type != "Agenda" && b.cyclenumber != 8)
+	return 1;
+  if ((b.type == "Identity" || b.type == "Agenda" || b.cyclenumber == 8) && a.type != "Identity" && a.type != "Agenda" && a.cyclenumber != 8)
+	return -1;
+  if (a.side < b.side)
+     return -1;
+  if (a.side > b.side)
+    return 1;
+  if (a.faction < b.faction) // might as well sort by faction too
+     return -1;
+  if (a.faction > b.faction)
+    return 1;
+  return 0;
+}
+
+function breaker_check(list){ // returns 1/2/3 for one/two/three breaker types
+	f = 0; // fracters
+	d = 0; // decoders
+	k = 0; // killers
+	
+	for (i=0;i<list.maxSize;i++)
+		{
+		if (list.contents[i].subtype.indexOf("Fracter") > -1)
+			{f = 1;}
+		if (list.contents[i].subtype.indexOf("Decoder") > -1)
+			{d = 1;}
+		if (list.contents[i].subtype.indexOf("Killer") > -1)
+			{k = 1;}
+		}
+	return f+d+k;		
+	}
+
+function compare_title(a,b) {
+  if (a.title < b.title)
+     return -1;
+  if (a.title > b.title)
+    return 1;
+  return 0;
+}
+
+function count(card){
+
+	var card_count = 0;
+	
+	for (n=0;n<deck.contents.length;n++)
+		{
+		if (deck.contents[n].title==card.title)
+			{card_count++;}
+		}
+	return card_count;
+	}
+
+function check_card_legality(card){ // checks if card is legal in deck
+ // This isn't working for agendas - it might be skipping the first card in the deck or something?
+	//get number of copies of card in list
+	var card_count = 0;
+	
+	for (n=0;n<deck.contents.length;n++)
+		{
+		if (deck.contents[n].title==card.title)
+			{card_count++;}
+		}
+
+	//	if the card's not out yet
+	if (card.cyclenumber == 8)
+		{return 0;}
+
+		
+	//if the card is limited and we have one
+	if (card_count >= 1 && card.limited == "true")
+		{return 0;}
+	
+	//if the card is 3x already
+	if (card_count >= 3)
+		{return 0;}
+	
+	// if the card is an agenda that brings the list over
+	if (card.agendapoints + deck.agendapoints() >= deck.agendaMax + 2)
+		{return 0;}
+		
+	//special check for Professor: he can take a program if he doesn't have it
+	if (card.faction != deck.identity.faction && card.type == "Program" && card_count==0 && deck.identity.title == "The Professor: Keeper of Knowledge")
+		{return 1;}
+		
+	//if the influence cost is too high
+	if ((card.faction != deck.identity.faction) && (card.factioncost + deck.influence() > deck.identity.influencelimit))
+		{return 0;}	
+	
+	// if we're playing Custom Biotics, reject Jinteki cards
+	if (card.faction == "Jinteki" && deck.identity.title == "Custom Biotics: Engineered for Success")
+		{return 0;}
+		
+	//if we decided to build a good deck, reject bad cards
+	if (deck.deckType == 3 && card.awful == "True")
+		{return 0;}
+			
+	return 1;
+	}
+
+function printDeck(list) { //outputs a decklist as html
+list.contents.sort(compare_type); // first we sort by type
+
+$('.deck_display').append("<p>",list.identity.title, "<p>");
+$('.deck_display').append("<p>","Deck size: ",list.contents.length);
+if (list.identity.side == "Corp"){$('.deck_display').append("<br>Agenda points: ",list.agendapoints());} // only show agenda points if it's a corp deck
+$('.deck_display').append("<br>Influence used: ",deck.influence(),"<br>Max influence: ",list.identity.influencelimit,"<p>");	
+
+var copiesSoFar = 1; //this comes into play in the for statement
+
+zone = ".deck_display";// experimental - change this mid-display
+zonecount = 0;
+
+for (i=0;i<list.maxSize;i++)
+	{
+	if (i>0)
+		{
+		if (list.contents[i].type != list.contents[i-1].type) //If we haven't printed any cards of that type, we prepend the entry with the name of the type
+			{var typeCount = countInDeck("type",list.contents[i].type);
+			zonecount++;
+			if (zonecount==3){zone = ".deck_stats";}
+			$(zone).append("<p>",list.contents[i].type," cards: (",typeCount,")<br>");}
+		}
+	else //this is a dumb workaround - otherwise I'd get an error for checking the -1 entry in an array
+		{var typeCount = countInDeck("type",list.contents[i].type);
+		$(zone).append("<p>",list.contents[i].type," cards: (",typeCount,")<br>");}
+	
+	//don't print card name if the next card is a copy too
+	if (list.contents[i+1] == list.contents[i])
+		{copiesSoFar++;}
+	else
+		{
+		linktext = "<a href='"; // create a link to netrunnerdb
+		linktext += list.contents[i].url;
+		linktext += "' target='_blank'>";
+		linktext += list.contents[i].title;
+		linktext += "</a>";
+		$(zone).append("<br>",copiesSoFar," ",linktext);
+		//Print the card's influence cost, if applicable
+		if (list.contents[i].factioncost > 0 && list.contents[i].faction != list.identity.faction && list.contents[i].type != "Agenda" && list.contents[i].type != "Identity")
+			{
+			$(zone).append(" (",list.contents[i].factioncost*copiesSoFar," influence)");
+			};
+		copiesSoFar = 1;
+		}
+	}
+
+list.good_econ = 0;
+list.combo = 0; // we're just going to count econ/combo cards
+
+if (list.identity.side == "Runner")	
+	{
+	$('.deck_stats').append("<br><br>Breaker suite check:"); // This is a kludge - replace it with a function
+	
+	for (i=0;i<list.maxSize;i++)
+		{
+		if (list.contents[i].subtype.indexOf("Fracter") > -1)
+			{$('.deck_stats').append("<br>You have a Fracter. (",list.contents[i].title,")");
+			break;
+			}
+		}
+	for (i=0;i<list.maxSize;i++)
+		{
+		if (list.contents[i].subtype.indexOf("Decoder") > -1)
+			{$('.deck_stats').append("<br>You have a Decoder. (",list.contents[i].title,")");
+			break;
+			}
+		}
+	for (i=0;i<list.maxSize;i++)
+		{
+		if (list.contents[i].subtype.indexOf("Killer") > -1)
+			{$('.deck_stats').append("<br>You have a Killer. (",list.contents[i].title,")");
+			break;
+			}
+		}
+	for (i=0;i<list.maxSize;i++)
+		{
+		if (list.contents[i].subtype.indexOf("AI") > -1)
+			{$('.deck_stats').append("<br>You have an AI breaker. (",list.contents[i].title,")");
+			break;
+			} 
+		}
+	}
+	
+$('.deck_stats').append("<br><br>Based on an extremely unscientific analysis, this deck is:");
+
+var deckquality = countInDeck("combo",list.identity.id_name_short) + countInDeck("generally_good_card","TRUE") + countInDeck("good_econ","TRUE") - countInDeck("awful","TRUE") + breaker_check(list);
+//bonus points for having a breaker of each type
+//MAYBE bonus points for combos
+
+if (deckquality <= 8)
+	{
+	$('.deck_stats').append("<br><b>UNPLAYABLE</b>");
+	}
+else if (deckquality <= 12)
+	{
+	$('.deck_stats').append("<br><b>BAD</b>");
+	}
+else if (deckquality <= 18)
+	{
+	$('.deck_stats').append("<br><b>SUBPAR</b>");
+	}
+else
+	{
+	$('.deck_stats').append("<br><b>MAYBE EVEN PLAYABLE??</b>");
+	}
+	
+$('.footer').append("<small>By Asher Stuhlman (<a href='http://netrunnerdb.com/en/decklists/find?author=LSK'>LSK</a> on netrunnerdb). <a href='http://www.coolstuffinc.com/user_wishlist.php?id=db108276066c18d7522d25c7295203eb'>Buy me more Netrunner, maybe?</a> If you like this or have feedback, send me an e-mail: <img src='http://www.stuhlman.net/images/email.png'/></small>");
+}
+
+function non_faction_cards(){
+	return _.filter(deck.contents,function(c){if (c.faction != deck.identity.faction){return 1;}return 0;});
+	}
+
+function evaluate(){ // This is an unused function that can be called to find the power levels of 100 decks drawn at random. Useful for adjusting the feedback given.
+	stats = new Array();
+	
+	for (z=0;z<100;z++){
+		main(3);
+	    stats[z] = countInDeck("combo",deck.identity.id_name_short) + countInDeck("generally_good_card","TRUE") + countInDeck("good_econ","TRUE") + breaker_check(deck);	
+		}
+	for (z=0;z<100;z++){
+		$('.deck_stats').append(",",stats[z]);
+		}
+	}
+
+</script>
+</head>
+
+<body onload=main(0)>
+If you see this text, something has gone wrong. 
+<table style="width:100%">
+  <tr>
+    <td id="deck_display"></td>
+    <td id="deck_stats"></td> 
+  </tr>
+</table>
+</body>
